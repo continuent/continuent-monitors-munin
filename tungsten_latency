@@ -1,0 +1,77 @@
+#!/usr/bin/env ruby
+#%# family=contrib
+#%# capabilities=autoconf
+
+if ARGV[0] == "autoconf"
+  unless ENV.has_key?("CONTINUENT_ROOT")
+    print "no (The CONTINUENT_ROOT environment variable is not set)\n"
+    exit(0)
+  end
+end
+
+begin
+  require "#{ENV['CONTINUENT_ROOT']}/tungsten/cluster-home/lib/ruby/tungsten"
+rescue LoadError
+  print "no (The CONTINUENT_ROOT environtment variable doesn't point to a valid directory)\n"
+  exit(0)
+end
+
+class TungstenMonitorMuninLatency
+  include TungstenScript
+  
+  def main
+    if command() == "autoconf"
+      _autoconf()
+    elsif command() == "config"
+      _config()
+    elsif command() == "fetch"
+      _fetch()
+    end
+  end
+  
+  # The autoconf command is used by munin to make sure this script will run properly
+  def _autoconf
+    unless TI
+      TU.output("no (The CONTINUENT_ROOT environtment variable doesn't point to a valid directory)")
+    else
+      TU.output("yes")
+    end
+  end
+  
+  # Give the munin system information on how the graph should be displayed
+  def _config
+    TU.output("graph_title Replication applied latency in seconds")
+    TU.output("graph_args -l 0")
+    TU.output("graph_vlabel Seconds")
+    TU.output("graph_scale no")
+    
+    TI.replication_services().each{
+      |svc|
+      TU.output("_#{TU.to_identifier(svc)}.label #{svc}")
+    }
+  end
+  
+  # Return the actual monitor values for each replication services
+  def _fetch
+    TI.replication_services().each{
+      |svc|
+      latency = TI.trepctl_value(svc, "appliedLatency")
+      TU.output("_#{TU.to_identifier(svc)}.value #{latency}")
+    }
+  end
+  
+  def configure
+    # The munin system may pass one of these commands
+    add_command(:autoconf, "Check if the script is valid for this host")
+    add_command(:config, "Print the monitor configuration")
+    add_command(:fetch, "Print the monitor values")
+  end
+  
+  def validate
+    if command() == nil
+      @command = "fetch"
+    end
+  end
+  
+  self.new().run()
+end
